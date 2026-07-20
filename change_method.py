@@ -1,82 +1,51 @@
 #!/usr/bin/env python3
 """
-change_method.py  --  Batch editor for ORCA .cmp compound-script variables.
+change_method.py — batch-edit method / basis / solvation Variables across ORCA .cmp templates.
 
-Detects and edits Variable lines from these families:
+Author:  Aris V. Rubio
+Date  :  July 2026
+Target:  ORCA 6.1.1 compound scripts
+
+Edits the quoted-string Variables of these families, in one file or across a tree:
     method_*   basis_*   param_*   solv_*   xtb_*   goat_*   IRC_*
-
-The `solv_*` family carries composite "MODEL(solvent)" strings (e.g.
-solv_opt = "CPCM(chloroform)"), replacing the older split form
-(solv_model_* + standalone `solvent`). The `xtb_*` family carries
-xtb-side flags (xtb_method = "--gxtb", xtb_solv = "--cosmo chloroform").
-Note: ALPB/GBSA solvation is GFN2-only; g-xTB only supports COSMO or gas
-(set xtb_solv to "" for gas phase).
-
-Only string-valued Variables (quoted values) are matched.
-
-Numeric Variables -- edit by hand:
-    gas_geom, gas_sp (phase toggles, 0/1),
-    MaxNTries*, Cutoff, scaling, NNegativeTarget*, IRC_MaxIter,
-    goat_nworkers, charge, multi.
-
-Per-system Variables (molecule, myFilename) are also not handled here.
+Only quoted values are touched; indentation and trailing comments are preserved. `solv_*`
+holds a composite "MODEL(solvent)" (e.g. "CPCM(chloroform)"); `xtb_*` holds xtb flags
+(e.g. "--gxtb", "--cosmo chloroform"). Numeric knobs (charge, multi, gas_*, Cutoff, scaling,
+MaxNTries*, IRC_MaxIter, goat_nworkers) and per-system Variables (molecule) are edited by hand.
 
 Value-scoped edits:
-    The same Variable NAME can carry different values in different job types
-    (e.g. method_sp = "B3LYP D3BJ" in the DFT single-points but
-    method_sp = "DLPNO-CCSD(T)" in orca.08). When a name has more than one
-    distinct current value across the scanned files, edits can be TARGETED at
-    one current value, leaving the differently-valued occurrences untouched --
-    both interactively (you are asked per current value) and via --set
-    (NAME:OLDVAL=NEWVAL). When a name has a single current value it behaves
-    exactly as before (one value applied everywhere).
+    The same NAME can carry different values in different jobs (e.g. method_sp is "B3LYP D3BJ"
+    in the DFT single points but "DLPNO-CCSD(T)" in orca.08). When a name has more than one
+    current value, an edit can target one value and leave the others untouched — interactively
+    (you are asked per value) or via --set NAME:OLDVAL=NEWVAL.
 
 Usage:
-    python change_method.py somefile.cmp              # single file
-    python change_method.py /path/to/folder           # all .cmp in folder
-    python change_method.py . --recursive             # include subdirs
-    python change_method.py -s libxc                  # scope to libxc/ subtree
-    python change_method.py -s native                 # scope to native/ subtree
-    python change_method.py --confs                   # mass-edit conformer-folder .cmp (cwd)
+    change_method.py somefile.cmp                 # one file
+    change_method.py /path/to/folder              # every .cmp in a folder
+    change_method.py . --recursive                # include subdirectories
+    change_method.py -s native                    # scope to the native/ subtree
+    change_method.py --confs                      # per-conformer .cmp under *_conf*/ (cwd)
 
-    # Non-interactive batch edits (skip the prompt entirely):
-    python change_method.py . --set basis_sp="def2-TZVP"
-    python change_method.py . --set 'method_sp:B3LYP D3BJ=r2SCAN-3c'   # value-scoped
-    python change_method.py . --set method_opt=r2SCAN-3c --set solv_opt="CPCM(water)"
+    # Non-interactive batch edits (any --set skips the prompt):
+    change_method.py . --set basis_sp="def2-TZVP"
+    change_method.py . --set 'method_sp:B3LYP D3BJ=r2SCAN-3c'          # value-scoped
+    change_method.py . --set method_opt=r2SCAN-3c --set solv_opt="CPCM(water)"
 
     # File filters (glob on the .cmp basename), composable with any mode:
-    python change_method.py . --recursive --exclude '*08*'   # skip the DLPNO SP
-    python change_method.py . --recursive --only 'orca.0[12]*.cmp'
+    change_method.py . --recursive --exclude '*08*'                    # skip the DLPNO SP
 
 Flags:
-    -s, --style {libxc,native,both}
-                    When the target contains libxc/ and native/ subdirs,
-                    restrict the scan to that subtree. 'both' edits both
-                    (warning: a single new value will be written into
-                    both styles, which usually isn't what you want since
-                    libxc names and ORCA-native keywords differ).
-    --confs         Conformer mode: edit the .cmp inside conformer folders
-                    (*_conf*/) under target (default cwd). One value is applied
-                    across all conformers of the same job type. Skips the
-                    libxc/native scoping (the conf .cmp are already a fixed style).
-    --set NAME=NEWVAL           Non-interactive: change every occurrence of NAME.
-    --set NAME:OLDVAL=NEWVAL    Non-interactive, value-scoped: change only the
-                    occurrences of NAME whose CURRENT value == OLDVAL. Repeatable.
-                    Giving any --set skips the interactive prompt. "blank" is
-                    honoured on both sides (NEWVAL and OLDVAL) as the empty
-                    string "". Honours --dry-run and --bak.
-    --only GLOB     Keep only .cmp whose basename matches GLOB (fnmatch).
-    --exclude GLOB  Drop .cmp whose basename matches GLOB (fnmatch). Both are
-                    repeatable and applied at file selection, so they compose
-                    with -s/--confs/--recursive/multiple targets. --only is
-                    applied first, then --exclude.
-    --recursive     Scan subdirectories
-    --dry-run       Preview changes without writing
-    --bak           Write a timestamped .bak copy before editing each file
-                    (default: no backup).
+    -s, --style {native,libxc,both}   Scope to a subtree when the target holds both
+                                      (both = write the same value into both styles).
+    --confs                           Conformer mode: edit .cmp under *_conf*/ folders.
+    --set NAME=NEWVAL                 Change every occurrence of NAME (repeatable).
+    --set NAME:OLDVAL=NEWVAL          Change only occurrences whose current value == OLDVAL.
+    --only GLOB / --exclude GLOB      Keep / drop .cmp by basename (fnmatch, repeatable).
+    --recursive                       Scan subdirectories.
+    --dry-run                         Preview; write nothing.
+    --bak                             Timestamped backup before editing each file.
 
-Tips:
-    Enter "blank" as a new value to set the variable to "" (empty string).
+Tip: enter (or --set) the word "blank" to set a value to "" (empty string).
 """
 
 import argparse, datetime, fnmatch, re, shutil, sys
@@ -89,9 +58,7 @@ STYLES = ("native", "libxc")
 
 FAMILIES = ["method", "basis", "param", "solv", "xtb", "goat", "IRC"]
 
-# Bare family names that can appear without a _suffix.
-# (Previously included `solvent`, removed in the .cmp refactor that folded
-# solvent into the composite solv_* values.)
+# Bare family names (no _suffix). None at present — every managed Variable is family_suffix.
 BARE_FAMILIES: List[str] = []
 
 # Preferred display order for step-suffixes in the interactive UI.
@@ -154,7 +121,7 @@ def family_of(name: str) -> str:
 
 
 def step_of(name: str) -> str:
-    """method_opt -> opt, solv_sp -> sp, xtb_method -> method, solvent -> global"""
+    """method_opt -> opt, solv_sp -> sp, xtb_method -> method"""
     fam = family_of(name)
     if name == fam:
         return "global"
