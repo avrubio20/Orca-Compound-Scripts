@@ -7,7 +7,7 @@ into a ready-to-run job.
 
 ## Requirements
 
-- ORCA 6.1.1
+- ORCA 6.1.1 (or 6.0+)
 - Python 3.11+ (standard library only — no dependencies)
 
 ## Layout
