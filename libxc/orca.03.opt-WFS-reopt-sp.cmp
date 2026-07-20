@@ -1,18 +1,14 @@
-# =============================================================
-# ORCA Compound Script
+# orca.03.opt-WFS-reopt-sp.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  Opt + Freq loop
 #   02  Wavefunction-stability check
 #   03  Reopt + Freq loop
 #   04  Wavefunction-stability recheck
 #   05  High-level single point
-# =============================================================
 
 # --- System ---
 Variable molecule = "mol.xyz";

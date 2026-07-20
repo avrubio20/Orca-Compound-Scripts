@@ -1,14 +1,10 @@
-# =============================================================
-# ORCA Compound Script
+# orca.09.ecd.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  TD-DFT ECD (vertical excitations + rotatory strengths)
-# =============================================================
 
 # --- System ---
 Variable molecule = "mol.xyz";

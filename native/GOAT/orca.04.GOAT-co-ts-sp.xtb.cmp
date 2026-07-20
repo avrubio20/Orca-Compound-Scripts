@@ -1,17 +1,13 @@
-# =============================================================
-# ORCA Compound Script
+# orca.04.GOAT-co-ts-sp.xtb.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  GOAT constrained conformer search
 #   02  Constrained pre-opt loop
 #   03  TS optimization loop
 #   04  High-level single point
-# =============================================================
 
 # --- System ---
 Variable molecule = "ts.xyz";

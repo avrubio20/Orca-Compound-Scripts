@@ -1,11 +1,8 @@
-# =============================================================
-# ORCA Compound Script
+# orca.04.co-ts-WFS-reopt-sp.dft.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  Constrained pre-opt loop
 #   02  TS optimization loop
@@ -13,7 +10,6 @@
 #   04  TS reopt loop
 #   05  Wavefunction-stability recheck
 #   06  High-level single point
-# =============================================================
 
 # --- System ---
 Variable molecule = "ts.xyz";

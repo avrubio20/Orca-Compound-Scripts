@@ -1,16 +1,12 @@
-# =============================================================
-# ORCA Compound Script
+# orca.02.co-ts-sp.xtb.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  Constrained pre-opt loop
 #   02  TS optimization loop
 #   03  High-level single point
-# =============================================================
 
 # --- System ---
 Variable molecule = "ts.xyz";

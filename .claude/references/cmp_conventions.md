@@ -10,21 +10,17 @@ method specification.**
 
 ---
 
-## 1. Header block (identical everywhere except the Jobs list)
+## 1. Header block (title = the file's own name; identical between twins)
 
 ```
-# =============================================================
-# ORCA Compound Script
+# <this file's name>.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  <month year>
+# ---------------------------------------------------------
 # Jobs:
 #   01  <role, no functional names>
 #   02  <role, no functional names>
-# =============================================================
 ```
 
 - **Job numbering starts at 01 and is contiguous** (01, 02, 03 …). There is

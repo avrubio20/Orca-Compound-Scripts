@@ -1,15 +1,11 @@
-# =============================================================
-# ORCA Compound Script
+# orca.10.freq-sp.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  Freq (thermochemistry on the GIVEN geometry; NO optimization)
 #   02  High-level single point
-# =============================================================
 
 # --- System ---
 Variable molecule = "mol.xyz";

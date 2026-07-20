@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-preporca.py — Prepare ORCA job folders from XYZ files.
+preporca.py — prepare ORCA job folders from XYZ files.
 
-Author:      Aris V. Rubio  (avrubio@g.ucla.edu)
-Affiliation: UCLA Chemistry — Houk Group / Athavale Group
-Target:      ORCA 6.1.1 compound scripts
+Author:  Aris V. Rubio
+Date  :  July 2026
+Target:  ORCA 6.1.1 compound scripts
 
 - Scans cwd for .xyz files, makes one job folder per xyz (or works in place
   when there is a single xyz).

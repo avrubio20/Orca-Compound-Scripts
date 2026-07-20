@@ -1,15 +1,11 @@
-# =============================================================
-# ORCA Compound Script
+# orca.01.co-ts.dft.cmp
 #
-# Author:      Aris V. Rubio
-# Affiliation: UCLA Dept. of Chemistry and Biochemistry
-# Groups:      Houk Group / Athavale Group
-# Email:       avrubio@g.ucla.edu
-# =============================================================
+# Author:  Aris V. Rubio
+# Date  :  July 2026
+# ---------------------------------------------------------
 # Jobs:
 #   01  Constrained pre-opt loop
 #   02  TS optimization loop
-# =============================================================
 
 # --- System ---
 Variable molecule = "ts.xyz";
