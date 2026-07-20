@@ -22,6 +22,11 @@ change_method.py   bulk-edit method / basis / solvation across templates
 `native/` and `libxc/` are identical except for how the functional is specified.
 Pick whichever tree names the functional you want to run.
 
+## Documentation
+
+- [`docs/setup.md`](docs/setup.md) — install, template resolution, and how a job runs.
+- [`docs/calculations.md`](docs/calculations.md) — the workflow families, when to use each, and how results are reported.
+
 ## Setup
 
 ```bash

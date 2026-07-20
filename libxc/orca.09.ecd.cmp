@@ -48,15 +48,19 @@ New_Step
     Functional &{method_ecd}
   end
   %tddft
-    NRoots &{nroots}
-    TDA    &{tda}
+    NRoots              &{nroots}
+    TDA                 &{tda}
+    DoCD                true
+    DoDipoleLength      true
+    DoDipoleVelocity    true
+    DoFullSemiclassical true
   end
   *xyzfile &{charge} &{multi} &{molecule}
 Step_End
 StepNo = StepNo + 1;
 
 Print("\n=== Job01 complete: TD-DFT ECD finished ===\n");
-Print("Parse the 'CD SPECTRUM' block of the .out for R(velocity) + excitation energies.\n");
+Print("Read R(velocity) from the 'CD SPECTRUM VIA TRANSITION VELOCITY DIPOLE MOMENTS' block (origin-independent); compare with the length form as a check.\n");
 
 jobtimer.stop();
 Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());

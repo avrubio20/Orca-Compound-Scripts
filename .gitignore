@@ -11,9 +11,7 @@ proc/
 
 # agent / editor tooling
 .claude-flow/
-.claude/agents/
-.claude/proven-config.json
-.claude/.proven-config-version
+.claude/
 
 # intentionally not shipped
 native/orca.11.mecp.cmp
