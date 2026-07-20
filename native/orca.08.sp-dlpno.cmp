@@ -30,7 +30,7 @@ EndIf
 Variable StepNo = 0;
 Variable E_ref;        # HF/SCF reference energy
 Variable E_corr;       # DLPNO correlation energy (incl. triples)
-Variable E_tot;        # total energy = E_ref + E_corr
+Variable E_tot;        # total CCSD(T) energy (SCF + correlation)
 Variable res = -1;
 
 timer jobtimer;
@@ -48,7 +48,7 @@ StepNo = StepNo + 1;
 
 res = E_ref.readProperty(propertyName="MDCI_REF_ENERGY");
 res = E_corr.readProperty(propertyName="MDCI_CORR_ENERGY");
-E_tot = E_ref + E_corr;
+res = E_tot.readProperty(propertyName="MDCI_TOTAL_ENERGY");
 
 Print("\n=== Job01 complete: DLPNO-CCSD(T) SP finished ===\n");
 
