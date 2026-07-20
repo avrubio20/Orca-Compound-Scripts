@@ -213,9 +213,9 @@ def find_conf_cmp_files(target: Path) -> List[Path]:
 
 def scan(path: Path) -> List[Occurrence]:
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines(True)
-    except OSError as e:
-        print(f"  [warn] {path}: {e}", file=sys.stderr)
+        lines = path.read_text(encoding="utf-8", errors="strict").splitlines(True)
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"  [warn] {path}: {e} (skipped)", file=sys.stderr)
         return []
     occs: List[Occurrence] = []
     for i, line in enumerate(lines):
@@ -300,6 +300,15 @@ def yn(question: str) -> bool:
         if a in ("", "n", "no"): return False
 
 
+def _input_or_skip(prompt: str) -> str:
+    """input() that treats EOF (non-interactive / exhausted stdin) as an empty
+    answer -> skip, rather than crashing with a traceback."""
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return ""
+
+
 def parse_new_value(raw: str) -> str:
     """
     Interpret user input as a variable value.
@@ -361,7 +370,7 @@ def choose_changes(values: Dict[str, Set[str]],
                 # Single value: unchanged one-shot behaviour (name-wide edit).
                 print(f'    {name} = "{vals[0]}"')
                 if yn(f"Change {name}?"):
-                    new = input(prompt.format(name)).strip()
+                    new = _input_or_skip(prompt.format(name))
                     if new:
                         changes.append(Change(name, None, parse_new_value(new)))
             else:
@@ -373,7 +382,7 @@ def choose_changes(values: Dict[str, Set[str]],
                 print("    (target each value separately; Enter to skip)")
                 for v in vals:
                     if yn(f'Change {name} where it is "{v}"?'):
-                        new = input(prompt.format(name)).strip()
+                        new = _input_or_skip(prompt.format(name))
                         if new:
                             changes.append(Change(name, v, parse_new_value(new)))
         print()
@@ -414,7 +423,7 @@ def apply_changes(occs: List[Occurrence], changes: List[Change],
 
     n_files = n_lines = 0
     for fp in sorted(by_file):
-        lines = fp.read_text(encoding="utf-8", errors="replace").splitlines(True)
+        lines = fp.read_text(encoding="utf-8", errors="strict").splitlines(True)
         new_lines = list(lines)
         changed = 0
         for o in by_file[fp]:
@@ -534,7 +543,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("    2) libxc")
             print("    3) both  (warning: same value gets written into both styles)")
             while True:
-                sel = input("  > ").strip().lower()
+                try:
+                    sel = input("  > ").strip().lower()
+                except EOFError:
+                    print("[error] No subtree selected (non-interactive stdin). "
+                          "Pass -s native|libxc|both.", file=sys.stderr)
+                    return 2
                 if sel in ("1", "native"):
                     roots = [target / "native"]; break
                 if sel in ("2", "libxc"):
@@ -545,6 +559,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if len(roots) > 1 or (len(roots) == 1 and roots[0] != target):
             print(f"\n  Scoped to: {', '.join(str(r.relative_to(target)) for r in roots)}")
+            if len(roots) > 1:
+                print("  WARNING: editing BOTH styles — the same value is written into native "
+                      "and libxc, which usually isn't what you want (their functional names differ).")
             # Style scoping implies recursive scan (subtrees have TS/, GOAT/ subdirs).
             args.recursive = True
 
