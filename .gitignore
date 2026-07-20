@@ -1,0 +1,20 @@
+# caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# local backups & scratch
+.backup_*/
+*.log
+proc/
+
+# editor / agent tooling
+.claude/
+.claude-flow/
+
+# local-only (not part of the release)
+CLAUDE.md
+tests/
+.vdw_patch.py
+native/orca.11.mecp.cmp
