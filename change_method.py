@@ -115,7 +115,7 @@ VAR_RE = re.compile(
     r'^(?P<indent>\s*)'
     r'Variable\s+'
     r'(?P<n>(?:' + _name_pat + r'))'
-    r'\s*=\s*'
+    r'(?P<eq>\s*=\s*)'
     r'"(?P<value>[^"]*)"'
     r'\s*;'
     r'(?P<tail>.*)$'
@@ -234,7 +234,7 @@ def rewrite_line(line: str, new_value: str) -> str:
         return line
     eol = "\n" if line.endswith("\n") else ""
     tail = m.group("tail")
-    return f'{m.group("indent")}Variable {m.group("n")} = "{new_value}";{tail}{eol}'
+    return f'{m.group("indent")}Variable {m.group("n")}{m.group("eq")}"{new_value}";{tail}{eol}'
 
 
 # -- Display ----------------------------------------------------------------
