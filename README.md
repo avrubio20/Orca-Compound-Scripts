@@ -24,6 +24,7 @@ Pick whichever tree names the functional you want to run.
 
 ## Documentation
 
+- [`docs/tutorial.md`](docs/tutorial.md) — step-by-step: the interactive wizard, plus worked opt / TS / constrained-TS / IRC examples.
 - [`docs/setup.md`](docs/setup.md) — install, template resolution, and how a job runs.
 - [`docs/calculations.md`](docs/calculations.md) — the workflow families, when to use each, and how results are reported.
 
