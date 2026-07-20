@@ -1,0 +1,67 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  High-level single point
+# =============================================================
+
+# --- System ---
+Variable molecule = "mol.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_sp  = 0;  # 1 = gas phase
+Variable solv_sp = "SMD(diethylether)";
+
+# --- Methods ---
+Variable method_sp = "B3LYP D3BJ";                 # functional keyword
+Variable basis_sp  = "def2-TZVPP def2/J";          # orbital + aux basis
+Variable param_sp  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_sp = 1) Then
+  solv_sp    = "";
+EndIf
+
+Variable StepNo = 0;
+Variable E2_el;
+Variable res     = -1;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - High-level single point
+# =============================================================
+jobtimer.start();
+
+New_Step
+  ! &{method_sp} &{basis_sp} &{param_sp} &{solv_sp}
+  *xyzfile &{charge} &{multi} &{molecule}
+Step_End
+StepNo = StepNo + 1;
+
+res   = E2_el.readProperty(propertyName="JOB_INFO_TOTAL_EN");
+If (res < 0) Then
+  Print("Job01: JOB_INFO_TOTAL_EN unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+
+Print("\n=== Job01 complete: HL-SP finished ===\n");
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+Print("\n");
+Print("==================== Single-Point Summary ====================\n");
+Print("High-level electronic energy E2_el        = %20.10lf Eh\n", E2_el);
+Print("==============================================================\n");
+
+EndRun

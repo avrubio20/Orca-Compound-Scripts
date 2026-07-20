@@ -1,0 +1,68 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  TD-DFT ECD (vertical excitations + rotatory strengths)
+# =============================================================
+
+# --- System ---
+Variable molecule = "mol.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation (gas_* = 1 forces gas phase) ---
+Variable gas_ecd  = 0;   # blanks solv_ecd
+Variable solv_ecd = "CPCM(chloroform)";
+
+# --- Methods ---
+Variable method_ecd = "HYB_GGA_XC_CAM_B3LYP";         # libXC functional name
+Variable basis_ecd  = "def2-SVPD def2/J";
+Variable param_ecd  = "TightSCF DEFGRID3 RIJCOSX";
+
+# --- TD-DFT / excited-state control ---
+Variable nroots = 30;         # number of excited states
+Variable tda    = "false";    # TDA vs full TD-DFT/RPA
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_ecd = 1) Then
+  solv_ecd = "";
+EndIf
+
+Variable StepNo = 0;
+Variable res = -1;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - TD-DFT ECD (vertical excitations + rotatory strengths)
+# =============================================================
+jobtimer.start();
+
+New_Step
+  ! &{basis_ecd} &{param_ecd} &{solv_ecd}
+  %method
+    Method     DFT
+    Functional &{method_ecd}
+  end
+  %tddft
+    NRoots &{nroots}
+    TDA    &{tda}
+  end
+  *xyzfile &{charge} &{multi} &{molecule}
+Step_End
+StepNo = StepNo + 1;
+
+Print("\n=== Job01 complete: TD-DFT ECD finished ===\n");
+Print("Parse the 'CD SPECTRUM' block of the .out for R(velocity) + excitation energies.\n");
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+EndRun

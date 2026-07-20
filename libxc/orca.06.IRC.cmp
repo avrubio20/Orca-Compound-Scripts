@@ -1,0 +1,73 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  IRC
+# =============================================================
+
+# --- System (expects an optimized TS geometry) ---
+Variable molecule = "ts.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_geom = 0;  # 1 = gas phase
+Variable solv_irc = "CPCM(diethylether)";
+
+# --- Methods ---
+Variable method_irc = "hyb_gga_xc_wb97x_v";         # libXC functional name
+Variable basis_irc  = "def2-SVP def2/J";            # orbital + aux basis
+Variable param_irc  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# --- IRC controls ---
+Variable IRC_MaxIter   = 20;
+Variable IRC_Direction = "both";   # "forward" | "backward" | "both"
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_geom = 1) Then
+  solv_irc = "";
+EndIf
+
+Variable StepNo = 0;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - IRC
+# =============================================================
+jobtimer.start();
+
+New_Step
+  ! IRC &{basis_irc} &{param_irc} &{solv_irc}
+  %method
+    Method     DFT
+    Functional &{method_irc}
+  end
+  %irc
+    MaxIter   &{IRC_MaxIter}
+    Direction &{IRC_Direction}
+    Monitor_Internals
+      {B 0 1}
+      {B 0 2}
+    end
+  end
+  %geom
+    Calc_Hess true
+  end
+  *xyzfile &{charge} &{multi} &{molecule}
+Step_End
+StepNo = StepNo + 1;
+
+Print("\n=== Job01 complete: IRC finished ===\n");
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+EndRun

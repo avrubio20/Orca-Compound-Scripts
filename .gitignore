@@ -1,0 +1,24 @@
+# byte-compiled / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# local backups & scratch
+.backup_*/
+*.log
+proc/
+
+# agent / editor tooling
+.claude-flow/
+.claude/agents/
+.claude/proven-config.json
+.claude/.proven-config-version
+
+# intentionally not shipped
+native/orca.11.mecp.cmp
+
+# local dev files (not part of the release)
+CLAUDE.md
+tests/
+.vdw_patch.py

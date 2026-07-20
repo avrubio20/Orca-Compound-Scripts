@@ -1,0 +1,165 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  TS optimization loop
+# =============================================================
+
+# --- System ---
+Variable molecule = "ts.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_geom   = 0;  # 1 = gas phase
+Variable solv_tsopt = "CPCM(diethylether)";
+
+# --- Methods ---
+Variable method_tsopt = "B3LYP D3BJ";                 # functional keyword
+Variable basis_tsopt  = "def2-SVP def2/J";            # orbital + aux basis
+Variable param_tsopt  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# --- Loop controls ---
+Variable MaxNTries         = 20;
+Variable Cutoff            = -10.0;   # imaginary-freq threshold (cm^-1)
+Variable scaling           = 0.25;    # FollowNormalMode step
+Variable NNegativeTargetTS = 1;
+
+# --- Files ---
+Variable myFilename = "geom.xyz";
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_geom = 1) Then
+  solv_tsopt = "";
+EndIf
+
+Variable E1_el, ZPE1, H1, S1, G1, Corr;
+Variable StepNo    = 0;
+Variable StepNo_TS = -1;
+
+Geometry myGeom;
+Variable freqs, modes;
+Variable res = -1;
+
+Variable NNegative = 0;
+Variable minfreq   = 0.0;
+Variable minIndex  = -1;
+
+Variable TS_Done, AbortRun;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - TS optimization loop
+# =============================================================
+jobtimer.start();
+
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    New_Step
+      ! OptTS Freq SlowConv &{method_tsopt} &{basis_tsopt} &{param_tsopt} &{solv_tsopt}
+      %geom
+        Calc_Hess true
+        Recalc_Hess 10
+        MaxIter     300
+      end
+      *xyzfile &{charge} &{multi} &{molecule}
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! OptTS Freq SlowConv &{method_tsopt} &{basis_tsopt} &{param_tsopt} &{solv_tsopt}
+      %geom
+        InHess     Read
+        InHessName "ts_seed.hess"
+        Recalc_Hess 10
+        MaxIter     300
+      end
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  Sys_cmd("cp *_Compound_%d.hess ts_seed.hess", StepNo);
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job01: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job01 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTargetTS) Then
+    goto TS_Done;
+  ElseIf (NNegative = 0) Then
+    Print("Job01 TS: no imaginary frequencies - geometry is a minimum, not a TS. Ending Run.\n");
+    goto AbortRun;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+TS_Done:
+
+StepNo_TS = StepNo;
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job01_TS_final.xyz");
+
+Print("\n=== Job01 complete: TS optimization finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+# --- Thermochemistry ---
+res  = E1_el.readProperty(propertyName="THERMO_ELEC_ENERGY");
+If (res < 0) Then
+  Print("Job01: THERMO_ELEC_ENERGY unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+res  = ZPE1.readProperty(propertyName="THERMO_ZPE");
+res  = H1.readProperty(propertyName="THERMO_ENTHALPY_H");
+res  = S1.readProperty(propertyName="THERMO_ENTROPY_S");
+res  = G1.readProperty(propertyName="THERMO_FREE_ENERGY_G");
+Corr = G1 - E1_el;
+
+Print("\n");
+Print("==================== Thermochemistry ====================\n");
+Print("  E1_el   = %20.10lf  Eh\n",   E1_el);
+Print("  ZPE     = %20.10lf  Eh\n",   ZPE1);
+Print("  H1      = %20.10lf  Eh\n",   H1);
+Print("  S1      = %20.10lf  Eh/K\n", S1);
+Print("  G1      = %20.10lf  Eh\n",   G1);
+Print("  Corr    = %20.10lf  Eh\n",   Corr);
+Print("=========================================================\n");
+
+AbortRun:
+
+EndRun

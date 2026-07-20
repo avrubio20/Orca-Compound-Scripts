@@ -1,0 +1,299 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  Opt + Freq loop
+#   02  GOAT conformer search
+#   03  Reopt + Freq loop
+#   04  High-level single point
+# =============================================================
+
+# --- System ---
+Variable molecule = "mol.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_geom   = 0;  # 1 = gas phase
+Variable gas_sp     = 0;  # 1 = gas phase
+Variable xtb_method = "--gxtb";
+Variable xtb_solv   = "--cosmo chloroform";
+Variable solv_opt   = "CPCM(diethylether)";
+Variable solv_sp    = "SMD(diethylether)";
+
+# --- Methods ---
+Variable method_opt = "B3LYP D3BJ";                 # functional keyword
+Variable basis_opt  = "def2-SVP def2/J";            # orbital + aux basis
+Variable param_opt  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+Variable method_sp  = "B3LYP D3BJ";                 # functional keyword
+Variable basis_sp   = "def2-TZVPP def2/J";          # orbital + aux basis
+Variable param_sp   = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# --- Loop controls ---
+Variable MaxNTries       = 10;
+Variable Cutoff          = -10.0;   # imaginary-freq threshold (cm^-1)
+Variable scaling         = 0.25;    # FollowNormalMode step
+Variable NNegativeTarget = 0;
+
+# --- GOAT controls ---
+Variable var_goat      = "GOAT";
+Variable goat_method   = "XTB";
+Variable goat_base     = "conf_search";
+Variable goat_minxyz   = "conf_search.globalminimum.xyz";
+Variable goat_nworkers = 6;
+
+# --- Files ---
+Variable myFilename = "geom.xyz";
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_sp = 1) Then
+  solv_sp    = "";
+EndIf
+
+If (gas_geom = 1) Then
+  solv_opt   = "";
+  xtb_solv   = "";
+EndIf
+
+Variable E1_el, ZPE1, H1, S1, G1, Corr;
+Variable E2_el, H2_final, S2_final, G2_final, DeltaE_HL_LL;
+
+Variable StepNo     = 0;
+Variable StepNo_Opt = -1;
+
+Geometry myGeom;
+Variable freqs, modes;
+Variable res = -1;
+
+Variable NNegative = 0;
+Variable minfreq   = 0.0;
+Variable minIndex  = -1;
+
+Variable OptDone, ReOptDone, AbortRun;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - Opt + Freq loop
+# =============================================================
+jobtimer.start();
+
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{molecule}
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job01: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job01 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTarget) Then
+    goto OptDone;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+OptDone:
+
+StepNo_Opt = StepNo;
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job01_opt_final.xyz");
+
+Print("\n=== Job01 complete: pre-GOAT opt finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 02 - GOAT conformer search
+# =============================================================
+Read_Geom(StepNo_Opt);
+
+New_Step
+  %base "&{goat_base}"
+  ! &{var_goat} &{goat_method}
+  %xtb
+    XTBINPUTSTRING "&{xtb_method} &{xtb_solv}"
+  end
+  %goat
+    NWORKERS &{goat_nworkers}
+  end
+  *xyzfile &{charge} &{multi} &{myFilename}
+Step_End
+StepNo = StepNo + 1;
+
+Sys_cmd("cp %s %s", goat_minxyz, myFilename);
+
+Print("=== Job02 complete: GOAT done. Global minimum staged as %s ===\n", myFilename);
+
+jobtimer.stop();
+Print("[TIMING] Job02: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 03 - Reopt + Freq loop
+# =============================================================
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job03: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job03 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTarget) Then
+    goto ReOptDone;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+ReOptDone:
+
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job03_reopt_final.xyz");
+
+Print("\n=== Job03 complete: post-GOAT reopt finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job03: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# --- Thermochemistry ---
+res = E1_el.readProperty(propertyName="THERMO_ELEC_ENERGY");
+If (res < 0) Then
+  Print("Job03: THERMO_ELEC_ENERGY unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+res = ZPE1.readProperty(propertyName="THERMO_ZPE");
+res = H1.readProperty(propertyName="THERMO_ENTHALPY_H");
+res = S1.readProperty(propertyName="THERMO_ENTROPY_S");
+res = G1.readProperty(propertyName="THERMO_FREE_ENERGY_G");
+Corr = G1 - E1_el;
+
+# =============================================================
+# Job 04 - High-level single point
+# =============================================================
+Read_Geom(StepNo);
+
+New_Step
+  ! &{method_sp} &{basis_sp} &{param_sp} &{solv_sp}
+Step_End
+
+StepNo = StepNo + 1;
+
+res = E2_el.readProperty(propertyName="JOB_INFO_TOTAL_EN");
+If (res < 0) Then
+  Print("Job04: JOB_INFO_TOTAL_EN unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+
+DeltaE_HL_LL = E2_el - E1_el;
+H2_final     = E2_el + (H1 - E1_el);
+S2_final     = S1;
+G2_final     = E2_el + (G1 - E1_el);
+
+myGeom.WriteXYZFile(filename="Job04_HL_sp.xyz");
+
+Print("\n=== Job04 complete: HL-SP finished, thermochemistry assembled ===\n");
+
+jobtimer.stop();
+Print("[TIMING] Job04: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+Print("\n");
+Print("==================== Thermochemistry ====================\n");
+Print("  E1_el   = %20.10lf  Eh\n",   E1_el);
+Print("  ZPE     = %20.10lf  Eh\n",   ZPE1);
+Print("  H1      = %20.10lf  Eh\n",   H1);
+Print("  S1      = %20.10lf  Eh/K\n", S1);
+Print("  G1      = %20.10lf  Eh\n",   G1);
+Print("  Corr    = %20.10lf  Eh\n",   Corr);
+Print("  E2_el   = %20.10lf  Eh\n",   E2_el);
+Print("  ΔE      = %20.10lf  Eh\n",   DeltaE_HL_LL);
+Print("  H2      = %20.10lf  Eh\n",   H2_final);
+Print("  S2      = %20.10lf  Eh/K\n", S2_final);
+Print("  G2      = %20.10lf  Eh\n",   G2_final);
+Print("=========================================================\n");
+
+AbortRun:
+
+EndRun

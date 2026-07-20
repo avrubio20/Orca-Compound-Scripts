@@ -1,0 +1,70 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  High-level single point
+# =============================================================
+
+# --- System ---
+Variable molecule = "mol.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_sp  = 0;
+Variable solv_sp = "SMD(diethylether)";
+
+# --- Methods ---
+Variable method_sp = "DLPNO-CCSD(T)";                   # correlation method
+Variable basis_sp  = "def2-TZVPP def2-TZVPP/C def2/J";  # orbital + aux basis set
+Variable param_sp  = "TightSCF TightPNO RIJCOSX";       # SCF/PNO/RI settings
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_sp = 1) Then
+  solv_sp = "";
+EndIf
+
+Variable StepNo = 0;
+Variable E_ref;        # HF/SCF reference energy
+Variable E_corr;       # DLPNO correlation energy (incl. triples)
+Variable E_tot;        # total energy = E_ref + E_corr
+Variable res = -1;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - High-level single point
+# =============================================================
+jobtimer.start();
+
+New_Step
+  ! &{method_sp} &{basis_sp} &{param_sp} &{solv_sp}
+  *xyzfile &{charge} &{multi} &{molecule}
+Step_End
+StepNo = StepNo + 1;
+
+res = E_ref.readProperty(propertyName="MDCI_REF_ENERGY");
+res = E_corr.readProperty(propertyName="MDCI_CORR_ENERGY");
+E_tot = E_ref + E_corr;
+
+Print("\n=== Job01 complete: DLPNO-CCSD(T) SP finished ===\n");
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+Print("\n");
+Print("============== DLPNO-CCSD(T) Single-Point Summary ==============\n");
+Print("Solvent (SMD)          : %s\n", solv_sp);
+Print("HF reference energy    E_ref  = %20.10lf Eh\n", E_ref);
+Print("Correlation energy     E_corr = %20.10lf Eh\n", E_corr);
+Print("Total CCSD(T) energy   E_tot  = %20.10lf Eh\n", E_tot);
+Print("===============================================================\n");
+
+EndRun

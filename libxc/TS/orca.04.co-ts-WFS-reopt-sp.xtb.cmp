@@ -1,0 +1,476 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  Constrained pre-opt loop
+#   02  TS optimization loop
+#   03  Wavefunction-stability check
+#   04  TS reopt loop
+#   05  Wavefunction-stability recheck
+#   06  High-level single point
+# =============================================================
+
+# --- System ---
+Variable molecule = "ts.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_geom   = 0;  # 1 = gas phase
+Variable gas_sp     = 0;  # 1 = gas phase
+Variable xtb_method = "--gfn2";
+Variable xtb_solv   = "--cosmo chloroform";
+Variable solv_tsopt = "SMD(chloroform)";
+Variable solv_sp    = "SMD(chloroform)";
+
+# --- Methods ---
+Variable method_copt  = "XTB2";                       # preopt xtb engine
+Variable param_copt   = "TightSCF";                   # SCF / grid / RI
+
+Variable method_tsopt = "hyb_gga_xc_wb97x_v";         # libXC functional name
+Variable basis_tsopt  = "def2-SVPD def2/J";           # orbital + aux basis
+Variable param_tsopt  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+Variable method_sp    = "hyb_mgga_xc_wb97m_v";        # libXC functional name
+Variable basis_sp     = "def2-TZVPP def2/J";          # orbital + aux basis
+Variable param_sp     = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# --- Loop controls ---
+Variable MaxNTriesPre      = 10;
+Variable MaxNTries         = 20;
+Variable Cutoff            = -50.0;                        # imaginary-freq threshold (cm^-1)
+Variable scaling           = 0.25;                         # FollowNormalMode step
+Variable NNegativeTargetCO = 2;
+Variable NNegativeTargetTS = 1;
+
+# --- Files ---
+Variable myFilename = "geom.xyz";
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_sp = 1) Then
+  solv_sp    = "";
+EndIf
+
+If (gas_geom = 1) Then
+  solv_tsopt = "";
+  xtb_solv   = "";
+EndIf
+
+Variable E1_el, ZPE1, H1, S1, G1, Corr;
+Variable E2_el, H2_final, S2_final, G2_final, DeltaE_HL_LL;
+
+Variable StepNo     = 0;
+Variable StepNo_TS  = -1;
+Variable StepNo_WFS = -1;
+
+Geometry myGeom;
+Variable freqs, modes;
+Variable res = -1;
+
+Variable NNegative = 0;
+Variable minfreq   = 0.0;
+Variable minIndex  = -1;
+
+Variable COPT_Done, TS_Done, TS_ReOpt_Done, AbortRun;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - Constrained pre-opt loop
+# =============================================================
+jobtimer.start();
+
+For itry From 1 To MaxNTriesPre Do
+
+  If (itry = 1) Then
+    New_Step
+      ! &{method_copt} Opt Freq &{param_copt}
+      %xtb
+        XTBINPUTSTRING "&{xtb_method} &{xtb_solv}"
+      end
+      %geom
+        Constraints
+          {B 0 1 C}
+          {B 0 2 C}
+        end
+      end
+      *xyzfile &{charge} &{multi} &{molecule}
+    Step_End
+  Else
+    New_Step
+      ! &{method_copt} Opt Freq &{param_copt}
+      %xtb
+        XTBINPUTSTRING "&{xtb_method} &{xtb_solv}"
+      end
+      %geom
+        Constraints
+          {B 0 1 C}
+          {B 0 2 C}
+        end
+      end
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job01: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job01 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = 0) Then
+    Print("Job01 COPT: no imaginary frequencies - geometry is not TS-like. Ending Run.\n");
+    goto AbortRun;
+  EndIf
+
+  If (NNegative <= NNegativeTargetCO) Then
+    goto COPT_Done;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+COPT_Done:
+
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job01_COPT_final.xyz");
+
+Sys_cmd("cp *_Compound_%d.hess copt_seed.hess", StepNo);
+
+Print("\n=== Job01 complete: constrained preopt finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 02 - TS optimization loop
+# =============================================================
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    Read_Geom(StepNo);
+    New_Step
+      ! OptTS Freq SlowConv &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+      %method
+        Method     DFT
+        Functional &{method_tsopt}
+      end
+      %geom
+        InHess     Read
+        InHessName "copt_seed.hess"
+        Recalc_Hess 10
+        MaxIter     300
+      end
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! OptTS Freq SlowConv &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+      %method
+        Method     DFT
+        Functional &{method_tsopt}
+      end
+      %geom
+        InHess     Read
+        InHessName "ts_seed.hess"
+        Recalc_Hess 10
+        MaxIter     300
+      end
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  Sys_cmd("cp *_Compound_%d.hess ts_seed.hess", StepNo);
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job02: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job02 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTargetTS) Then
+    goto TS_Done;
+  ElseIf (NNegative = 0) Then
+    Print("Job02 TS: no imaginary frequencies - geometry is a minimum, not a TS. Ending Run.\n");
+    goto AbortRun;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+TS_Done:
+
+StepNo_TS = StepNo;
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job02_TS_final.xyz");
+
+Print("\n=== Job02 complete: TS optimization finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job02: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 03 - Wavefunction-stability check
+# =============================================================
+Read_Geom(StepNo_TS);
+
+New_Step
+  ! &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+  %method
+    Method     DFT
+    Functional &{method_tsopt}
+  end
+  %scf
+    HFTyp                    UHF
+    STABPerform              true
+    STABRestartUHFifUnstable true
+  end
+  *xyzfile &{charge} &{multi} &{myFilename}
+Step_End
+
+StepNo     = StepNo + 1;
+StepNo_WFS = StepNo;
+
+Print("=== Job03 complete: WFS 1 done (StepNo_WFS = %d, stabilized TS MOs live at that step) ===\n", StepNo_WFS);
+
+jobtimer.stop();
+Print("[TIMING] Job03: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 04 - TS reopt loop
+# =============================================================
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    Read_Geom(StepNo_WFS);
+    Print("=== Job04 iter 1: reading WFS-stabilized MOs from step %d ===\n", StepNo_WFS);
+    ReadMOs(StepNo_WFS);
+    New_Step
+      ! OptTS Freq SlowConv &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+      %method
+        Method     DFT
+        Functional &{method_tsopt}
+      end
+      %geom
+        InHess     Read
+        InHessName "ts_seed.hess"
+        Recalc_Hess 10
+        MaxIter     300
+      end
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! OptTS Freq SlowConv &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+      %method
+        Method     DFT
+        Functional &{method_tsopt}
+      end
+      %geom
+        InHess     Read
+        InHessName "ts_seed.hess"
+        Recalc_Hess 10
+        MaxIter     300
+      end
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  Sys_cmd("cp *_Compound_%d.hess ts_seed.hess", StepNo);
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job04: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job04 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTargetTS) Then
+    goto TS_ReOpt_Done;
+  ElseIf (NNegative = 0) Then
+    Print("Job04 TS reopt: no imaginary frequencies - geometry is a minimum, not a TS. Ending Run.\n");
+    goto AbortRun;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+TS_ReOpt_Done:
+
+StepNo_TS = StepNo;
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job04_TS_reopt_final.xyz");
+
+# --- Thermochemistry ---
+res = E1_el.readProperty(propertyName="THERMO_ELEC_ENERGY");
+If (res < 0) Then
+  Print("Job04: THERMO_ELEC_ENERGY unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+res = ZPE1.readProperty(propertyName="THERMO_ZPE");
+res = H1.readProperty(propertyName="THERMO_ENTHALPY_H");
+res = S1.readProperty(propertyName="THERMO_ENTROPY_S");
+res = G1.readProperty(propertyName="THERMO_FREE_ENERGY_G");
+Corr = G1 - E1_el;
+
+Print("\n=== Job04 complete: TS reopt after WFS finished (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job04: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 05 - Wavefunction-stability recheck
+# =============================================================
+Read_Geom(StepNo_TS);
+
+New_Step
+  ! &{basis_tsopt} &{param_tsopt} &{solv_tsopt} UKS
+  %method
+    Method     DFT
+    Functional &{method_tsopt}
+  end
+  %scf
+    HFTyp                    UHF
+    STABPerform              true
+    STABRestartUHFifUnstable true
+  end
+  *xyzfile &{charge} &{multi} &{myFilename}
+Step_End
+
+StepNo     = StepNo + 1;
+StepNo_WFS = StepNo;
+
+Print("=== Job05 complete: WFS 2 done (StepNo_WFS = %d, final stable TS MOs live at that step) ===\n", StepNo_WFS);
+
+jobtimer.stop();
+Print("[TIMING] Job05: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+jobtimer.start();
+
+# =============================================================
+# Job 06 - High-level single point
+# =============================================================
+Read_Geom(StepNo);
+Print("=== Job06: reading final stable MOs from step %d ===\n", StepNo);
+
+New_Step
+  ! &{basis_sp} &{param_sp} &{solv_sp} UKS
+  %method
+    Method     DFT
+    Functional &{method_sp}
+  end
+Step_End
+
+StepNo = StepNo + 1;
+
+res = E2_el.readProperty(propertyName="JOB_INFO_TOTAL_EN");
+If (res < 0) Then
+  Print("Job06: JOB_INFO_TOTAL_EN unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+
+DeltaE_HL_LL = E2_el - E1_el;
+H2_final     = E2_el + (H1 - E1_el);
+S2_final     = S1;
+G2_final     = E2_el + (G1 - E1_el);
+
+myGeom.WriteXYZFile(filename="Job06_HL_sp.xyz");
+
+Print("\n=== Job06 complete: HL-SP finished, thermochemistry assembled ===\n");
+
+jobtimer.stop();
+Print("[TIMING] Job06: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+Print("\n");
+Print("==================== Thermochemistry ====================\n");
+Print("  E1_el   = %20.10lf  Eh\n",   E1_el);
+Print("  ZPE     = %20.10lf  Eh\n",   ZPE1);
+Print("  H1      = %20.10lf  Eh\n",   H1);
+Print("  S1      = %20.10lf  Eh/K\n", S1);
+Print("  G1      = %20.10lf  Eh\n",   G1);
+Print("  Corr    = %20.10lf  Eh\n",   Corr);
+Print("  E2_el   = %20.10lf  Eh\n",   E2_el);
+Print("  ΔE      = %20.10lf  Eh\n",   DeltaE_HL_LL);
+Print("  H2      = %20.10lf  Eh\n",   H2_final);
+Print("  S2      = %20.10lf  Eh/K\n", S2_final);
+Print("  G2      = %20.10lf  Eh\n",   G2_final);
+Print("=========================================================\n");
+
+AbortRun:
+
+EndRun

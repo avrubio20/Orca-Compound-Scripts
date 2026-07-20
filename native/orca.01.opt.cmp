@@ -1,0 +1,150 @@
+# =============================================================
+# ORCA Compound Script
+#
+# Author:      Aris V. Rubio
+# Affiliation: UCLA Dept. of Chemistry and Biochemistry
+# Groups:      Houk Group / Athavale Group
+# Email:       avrubio@g.ucla.edu
+# =============================================================
+# Jobs:
+#   01  Opt + Freq loop
+# =============================================================
+
+# --- System ---
+Variable molecule = "mol.xyz";
+Variable charge   = 0;
+Variable multi    = 1;
+
+# --- Solvation ---
+Variable gas_geom = 0;  # 1 = gas phase
+Variable solv_opt = "CPCM(diethylether)";
+
+# --- Methods ---
+Variable method_opt = "B3LYP D3BJ";                 # functional keyword
+Variable basis_opt  = "def2-SVP def2/J";            # orbital + aux basis
+Variable param_opt  = "TightSCF DEFGRID3 RIJCOSX";  # SCF / grid / RI
+
+# --- Loop controls ---
+Variable MaxNTries       = 10;
+Variable Cutoff          = -10.0;   # imaginary-freq threshold (cm^-1)
+Variable scaling         = 0.25;    # FollowNormalMode step
+Variable NNegativeTarget = 0;
+
+# --- Files ---
+Variable myFilename = "geom.xyz";
+
+# =============================================================
+# Internals
+# =============================================================
+If (gas_geom = 1) Then
+  solv_opt = "";
+EndIf
+
+Variable E1_el, ZPE1, H1, S1, G1, Corr;
+Variable StepNo = 0;
+
+Geometry myGeom;
+Variable freqs, modes;
+Variable res = -1;
+
+Variable NNegative = 0;
+Variable minfreq   = 0.0;
+Variable minIndex  = -1;
+
+Variable OptDone, AbortRun;
+
+timer jobtimer;
+
+# =============================================================
+# Job 01 - Opt + Freq loop
+# =============================================================
+jobtimer.start();
+
+For itry From 1 To MaxNTries Do
+
+  If (itry = 1) Then
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{molecule}
+    Step_End
+  Else
+    ReadMOs(StepNo);
+    New_Step
+      ! Opt Freq &{method_opt} &{basis_opt} &{param_opt} &{solv_opt}
+      *xyzfile &{charge} &{multi} &{myFilename}
+    Step_End
+  EndIf
+
+  StepNo = StepNo + 1;
+
+  res = freqs.readProperty(propertyName="THERMO_FREQS");
+  If (res < 0) Then
+    Print("Job01: THERMO_FREQS unavailable (step did not converge). Ending run.\n");
+    goto AbortRun;
+  EndIf
+
+  NNegative = 0;
+  minfreq   = 0.0;
+  minIndex  = -1;
+
+  For ifreq From 0 To freqs.GetSize()-1 Do
+    If (freqs[ifreq] < Cutoff) Then
+      NNegative = NNegative + 1;
+      If (freqs[ifreq] < minfreq) Then
+        minfreq  = freqs[ifreq];
+        minIndex = ifreq;
+      EndIf
+    EndIf
+  EndFor
+
+  Print("Job01 Iter %d: Nimag = %d (lowest = %lf cm^-1)\n", itry, NNegative, minfreq);
+
+  If (NNegative = NNegativeTarget) Then
+    goto OptDone;
+  EndIf
+
+  myGeom.Read();
+  res = modes.readProperty(propertyName="HESSIAN_MODES");
+  myGeom.FollowNormalMode(vibrationSN=minIndex+1, scalingFactor=scaling);
+  myGeom.WriteXYZFile(filename=myFilename);
+
+EndFor
+
+Print("Job01: MaxNTries reached without hitting the Nimag target - not converged. Ending run.\n");
+goto AbortRun;
+
+OptDone:
+
+myGeom.Read();
+myGeom.WriteXYZFile(filename="Job01_opt_final.xyz");
+
+Print("\n=== Job01 complete: optimized minimum confirmed (lowest = %lf cm^-1) ===\n", minfreq);
+
+jobtimer.stop();
+Print("[TIMING] Job01: %.2lf s elapsed (cumulative %.2lf s)\n", jobtimer.last(), jobtimer.total());
+
+# --- Thermochemistry ---
+res  = E1_el.readProperty(propertyName="THERMO_ELEC_ENERGY");
+If (res < 0) Then
+  Print("Job01: THERMO_ELEC_ENERGY unavailable (step did not converge). Ending run.\n");
+  goto AbortRun;
+EndIf
+res  = ZPE1.readProperty(propertyName="THERMO_ZPE");
+res  = H1.readProperty(propertyName="THERMO_ENTHALPY_H");
+res  = S1.readProperty(propertyName="THERMO_ENTROPY_S");
+res  = G1.readProperty(propertyName="THERMO_FREE_ENERGY_G");
+Corr = G1 - E1_el;
+
+Print("\n");
+Print("==================== Thermochemistry ====================\n");
+Print("  E1_el   = %20.10lf  Eh\n",   E1_el);
+Print("  ZPE     = %20.10lf  Eh\n",   ZPE1);
+Print("  H1      = %20.10lf  Eh\n",   H1);
+Print("  S1      = %20.10lf  Eh/K\n", S1);
+Print("  G1      = %20.10lf  Eh\n",   G1);
+Print("  Corr    = %20.10lf  Eh\n",   Corr);
+Print("=========================================================\n");
+
+AbortRun:
+
+EndRun
